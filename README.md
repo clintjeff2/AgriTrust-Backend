@@ -1,23 +1,34 @@
-# AgriTrust Protocol — Backend
+# AgriTrust-Backend
 
-Node.js API server for the AgriTrust Protocol: a decentralized agricultural trust fund management platform on Stellar Soroban.
+Node.js Express API server for the AgriTrust Protocol, providing backend services for trust fund management, milestone verification, and dispute resolution integration.
 
-## Features
+## 🚀 Key Features
+* **Trust Fund Management API:** REST endpoints to create, track, and manage agricultural trust funds.
+* **Milestone Verification:** Endpoints to process and verify milestone completion proofs.
+* **Dispute & Yield Integrations:** Integrates dispute resolution workflows and monitors treasury yield aggregation.
 
-- **Trust Fund Management**: REST API for creating and managing agricultural trust funds
-- **Milestone Verification**: Endpoints for milestone completion proof verification
-- **Dispute Resolution**: On-chain dispute resolution integration
-- **Yield Management**: Treasury yield aggregation and distribution
-- **Cross-Chain Support**: Stellar Soroban smart contract interaction
+## 🛠️ Tech Stack
+* **Language/Framework:** Node.js / Express
+* **Key Dependencies:** `express`, `cors`, `dotenv`
 
-## Tech Stack
+## 📦 Getting Started
 
-- [Express](https://expressjs.com/) — Web framework
-- [Stellar SDK](https://github.com/stellar/js-stellar-sdk) — Blockchain integration
+### Prerequisites
+Ensure you have the required toolchains installed:
+* Node.js (v18 or higher recommended)
+* npm (Node Package Manager)
 
-## Getting Started
-
+### Installation & Local Setup
 ```bash
+# Clone the repository (if running manually)
+git clone https://github.com/AgriTrust-Protocol/AgriTrust-Backend
+
+# Install dependencies or build
 npm install
+
+# Start the application
 npm start
 ```
+
+## 🤝 Contributing
+Contributions are highly welcome. Please ensure your commits are cryptographically signed using GPG or SSH keys. For major structural changes, please open an issue first to discuss your proposal.
