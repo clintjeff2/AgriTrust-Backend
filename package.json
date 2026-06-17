@@ -6,16 +6,16 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "echo \"ok\"",
+    "test": "npx vitest run",
     "test:lock": "npx ts-node tests/integration/silo_lock_test.ts",
     "test:unit": "npx ts-node tests/unit/sensors.test.ts",
     "migrate": "node -e \"require('./src/database/migrate')\""
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "@opentelemetry/api": "^1.9.0",
     "pg": "^8.13.0",
     "uuid": "^11.1.0"
   },
@@ -24,6 +24,7 @@
     "@types/pg": "^8.20.0",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }
