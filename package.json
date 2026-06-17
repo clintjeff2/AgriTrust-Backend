@@ -2,14 +2,28 @@
   "name": "agritrust-backend",
   "version": "1.0.0",
   "description": "API for AgriTrust Protocol",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "echo \"ok\""
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "echo \"ok\"",
+    "test:lock": "npx ts-node tests/integration/silo_lock_test.ts",
+    "test:unit": "echo \"ok\"",
+    "migrate": "node -e \"require('./src/database/migrate')\""
   },
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "@opentelemetry/api": "^1.9.0",
+    "pg": "^8.13.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "@types/pg": "^8.20.0",
+    "@types/uuid": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
   }
 }
