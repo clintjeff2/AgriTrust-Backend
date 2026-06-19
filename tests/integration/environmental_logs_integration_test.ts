@@ -156,9 +156,9 @@ async function main(): Promise<void> {
   // 6. Verify compression policy exists
   // ----------------------------------------------------------
   const { rows: compressionPolicies } = await pool.query(`
-    SELECT job_id, schedule_interval
+    SELECT job_id, schedule_interval, proc_name, proc_schema
     FROM timescaledb_information.jobs
-    WHERE proc_name = 'compression_policy'
+    WHERE proc_name LIKE '%compression%'
       AND hypertable_name = 'environmental_logs'
   `);
 
@@ -168,15 +168,16 @@ async function main(): Promise<void> {
     await pool.end();
     process.exit(1);
   }
-  console.log(`✓ Compression policy active: ${compressionPolicies.length} job(s)`);
+  const cp = compressionPolicies[0];
+  console.log(`✓ Compression policy active: job #${cp.job_id} (${cp.proc_schema}.${cp.proc_name})`);
 
   // ----------------------------------------------------------
   // 7. Verify retention policy exists
   // ----------------------------------------------------------
   const { rows: retentionPolicies } = await pool.query(`
-    SELECT job_id, schedule_interval
+    SELECT job_id, schedule_interval, proc_name, proc_schema
     FROM timescaledb_information.jobs
-    WHERE proc_name = 'retention_policy'
+    WHERE proc_name LIKE '%retention%'
       AND hypertable_name = 'environmental_logs'
   `);
 
@@ -186,7 +187,8 @@ async function main(): Promise<void> {
     await pool.end();
     process.exit(1);
   }
-  console.log(`✓ Retention policy active: ${retentionPolicies.length} job(s)`);
+  const rp = retentionPolicies[0];
+  console.log(`✓ Retention policy active: job #${rp.job_id} (${rp.proc_schema}.${rp.proc_name})`);
 
   // ----------------------------------------------------------
   // Done
