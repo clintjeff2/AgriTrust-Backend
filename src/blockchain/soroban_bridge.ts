@@ -47,7 +47,7 @@ export class SorobanBridge {
           throw new Error(`Horizon returned ${response.status}`);
         }
 
-        const data = await response.json();
+        const data: any = await response.json();
         return {
           sequence: data.sequence,
           closed_at: data.closed_at,
@@ -76,7 +76,7 @@ export class SorobanBridge {
       clearTimeout(timeout);
 
       if (!response.ok) return [];
-      const data = await response.json();
+      const data: any = await response.json();
       return (data._embedded?.records ?? []) as HorizonEffect[];
     } catch {
       return [];
