@@ -2,16 +2,53 @@ import * as net from 'net';
 import { Transform, TransformCallback } from 'stream';
 import { SlidingWindowBuffer, TelemetryFrame } from './buffer_manager';
 import { backpressure, BackpressureLevel } from './backpressure';
+import { RateLimiter } from '../api/middleware/rate_limit';
+import { DeviceProfileStore } from '../devices/profile_store';
 
 const DEFAULT_PORT = 4000;
 
-function createSensorGateway(buffer: SlidingWindowBuffer, port: number = DEFAULT_PORT): net.Server {
+interface GatewayOptions {
+  buffer: SlidingWindowBuffer;
+  port?: number;
+  rateLimiter?: RateLimiter;
+}
+
+function createSensorGateway(
+  bufferOrOptions: SlidingWindowBuffer | GatewayOptions,
+  port?: number,
+): net.Server {
+  let buffer: SlidingWindowBuffer;
+  let rateLimiter: RateLimiter | undefined;
+  let effectivePort: number = DEFAULT_PORT;
+
+  if (bufferOrOptions instanceof SlidingWindowBuffer) {
+    buffer = bufferOrOptions;
+    if (port !== undefined) {
+      effectivePort = port;
+    }
+  } else {
+    buffer = bufferOrOptions.buffer;
+    rateLimiter = bufferOrOptions.rateLimiter;
+    effectivePort = bufferOrOptions.port ?? DEFAULT_PORT;
+  }
+
   const server = net.createServer((socket) => {
     const sensorId = `${socket.remoteAddress}:${socket.remotePort}`;
 
     const transform = new Transform({
       objectMode: true,
       transform(chunk: Buffer, _encoding: string, callback: TransformCallback) {
+        // ── Device-aware rate limiting ──────────────────────────────
+        if (rateLimiter) {
+          const allowed = rateLimiter.allowRequest(chunk, sensorId);
+          if (!allowed) {
+            // Throttled: drop the frame silently
+            callback(null);
+            return;
+          }
+        }
+
+        // ── Global backpressure check ───────────────────────────────
         if (backpressure.globalBackpressure) {
           socket.pause();
           backpressure.setBackpressure(sensorId, BackpressureLevel.CRITICAL);
@@ -57,4 +94,4 @@ function createSensorGateway(buffer: SlidingWindowBuffer, port: number = DEFAULT
   return server;
 }
 
-export { createSensorGateway, DEFAULT_PORT };
+export { createSensorGateway, DEFAULT_PORT, GatewayOptions };
