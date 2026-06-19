@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
@@ -38,6 +38,41 @@ app.get('/health/ledger-consistency', async (req, res) => {
       error: 'Ledger consistency check failed',
       healthy: false,
     });
+  }
+});
+
+/**
+ * GET /metrics/runtime
+ *
+ * Returns runtime-level Prometheus metrics (event loop lag, heap, thread contention).
+ * This endpoint does not require a database connection and is safe for
+ * external scrape targets (every 15 s).
+ *
+ * In development (ts-node) the module lives at ./src/api/metrics/runtime_metrics.ts.
+ * In production (after `npm run build`) the compiled output is at
+ * ./dist/src/api/metrics/runtime_metrics.js.
+ */
+app.get('/metrics/runtime', async (_req, res) => {
+  try {
+    let runtimeMetrics;
+    try {
+      runtimeMetrics = require('./src/api/metrics/runtime_metrics');
+    } catch {
+      // Fall back to compiled output for production builds
+      runtimeMetrics = require('./dist/src/api/metrics/runtime_metrics');
+    }
+
+    const { getRuntimeMetricsText, startCollecting } = runtimeMetrics;
+
+    // Ensure the background collector is running
+    startCollecting();
+
+    const metrics = await getRuntimeMetricsText();
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.status(200).send(metrics);
+  } catch (err) {
+    console.error('Failed to scrape runtime metrics:', err);
+    res.status(500).send('# Error collecting runtime metrics\n');
   }
 });
 
