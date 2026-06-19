@@ -30,7 +30,7 @@ function generateRowBatch(batchSize: number): ReturnType<typeof generateSyntheti
 
   for (let i = 0; i < batchSize; i++) {
     const sensorIndex = i % SENSOR_COUNT;
-    const sensorId = `aaaaaaaa-${String(sensorIndex).padStart(3, '0')}-0000-0000-000000000000`;
+    const sensorId = `aaaaaaaa-${String(sensorIndex).padStart(4, '0')}-0000-0000-000000000000`;
     const timestamp = new Date(now - Math.random() * windowMs);
     const spatialZoneId = (sensorIndex % ZONE_COUNT) + 1;
 
