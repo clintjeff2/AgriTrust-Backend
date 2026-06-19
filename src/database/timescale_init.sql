@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS environmental_logs (
     humidity        FLOAT8 NOT NULL,
     solar_radiation FLOAT8 NOT NULL,
     spatial_zone_id INT4 NOT NULL,
-    PRIMARY KEY (id, timestamp)
+    PRIMARY KEY (timestamp, spatial_zone_id, id)
 );
 
 -- ============================================================

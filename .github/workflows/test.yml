@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       timescaledb:
-        image: timescale/timescaledb-ha:pg16.14-ts2.27.2-all-oss
+        image: timescale/timescaledb-ha:pg16.14-ts2.27.2-all
         env:
           POSTGRES_PASSWORD: postgres
         ports:
