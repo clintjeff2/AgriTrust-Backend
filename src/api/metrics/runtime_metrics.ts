@@ -5,19 +5,22 @@
  *   - Event loop lag histogram  (perf_hooks.monitorEventLoopDelay)
  *   - Heap usage + allocation rate (rolling 10 s window)
  *   - Thread / handle contention gauges  (active handles, thread pool depth, blocked workers)
+ *   - Thread state from /proc/self/status (Linux) or os module fallback
  *   - Health-derived alert rule: warns when p99 lag > 500 ms for 5 consecutive intervals
  *
  * The collectors run on a 15-second interval (default) with <1% CPU overhead.
  * The interval timer is unref'd so it does not prevent process exit.
+ *
+ * All metrics are registered against the unified metricsRegistry so a single
+ * GET /metrics scrape returns every metric family in the system.
  */
 
 import { monitorEventLoopDelay } from 'perf_hooks';
-import { Registry, Histogram, Gauge } from 'prom-client';
-
-// ─── Separate registry for runtime metrics ──────────────────────────────────
-// Using a distinct registry so /metrics/runtime returns only runtime metrics
-// and does not mix with any future application-level /metrics endpoint.
-const runtimeRegistry = new Registry();
+import { Histogram, Gauge } from 'prom-client';
+import { metricsRegistry } from './registry';
+import { collectThreadStates } from './thread_state';
+import { collectPoolMetrics } from './pool_metrics';
+import { collectLedgerMetrics } from './ledger_metrics';
 
 // ─── Event Loop Lag Histogram ───────────────────────────────────────────────
 // Buckets match the issue specification:
@@ -26,7 +29,7 @@ const eventLoopLagHistogram = new Histogram({
   name: 'node_event_loop_lag_seconds',
   help: 'Event loop lag histogram in seconds',
   buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
-  registers: [runtimeRegistry],
+  registers: [metricsRegistry],
 });
 
 /**
@@ -41,13 +44,13 @@ eventLoopMonitor.enable();
 const heapUsedGauge = new Gauge({
   name: 'node_heap_used_bytes',
   help: 'Current heap usage in bytes (process.memoryUsage().heapUsed)',
-  registers: [runtimeRegistry],
+  registers: [metricsRegistry],
 });
 
 const heapAllocRateGauge = new Gauge({
   name: 'node_heap_alloc_rate_bytes_per_sec',
   help: 'Heap allocation rate in bytes/second computed over a rolling 10-second window',
-  registers: [runtimeRegistry],
+  registers: [metricsRegistry],
 });
 
 // Rolling state for allocation-rate calculation
@@ -55,8 +58,6 @@ let prevHeapUsed = process.memoryUsage().heapUsed;
 let prevHeapTime = Date.now();
 
 // ─── Thread / Handle Contention Gauges ──────────────────────────────────────
-// The issue spec references Rust tokio runtime metrics (num_workers,
-// injection_queue_depth, blocking_queue_depth, num_blocking_threads).
 // For Node.js we expose the closest available analogues:
 //   - active libuv handles          (proxy for "active threads")
 //   - active worker threads count   (Worker instances still running)
@@ -67,48 +68,42 @@ let prevHeapTime = Date.now();
 const activeHandlesGauge = new Gauge({
   name: 'node_active_handles_total',
   help: 'Number of active libuv handles (sockets, timers, etc.) — proxy for active threads',
-  registers: [runtimeRegistry],
+  registers: [metricsRegistry],
 });
 
 const workerThreadsActiveGauge = new Gauge({
   name: 'node_worker_threads_active',
   help: 'Number of active Worker threads currently running',
-  registers: [runtimeRegistry],
+  registers: [metricsRegistry],
 });
 
 const threadPoolSizeGauge = new Gauge({
   name: 'node_thread_pool_size',
   help: 'Size of the libuv thread pool (UV_THREADPOOL_SIZE or default 4)',
-  registers: [runtimeRegistry],
+  registers: [metricsRegistry],
 });
 
 const threadPoolQueueDepthGauge = new Gauge({
   name: 'node_thread_pool_queue_depth',
   help: 'Approximate thread pool queue depth (active handles - baseline); true depth requires native addon',
-  registers: [runtimeRegistry],
+  registers: [metricsRegistry],
 });
 
 const blockedWorkerGauge = new Gauge({
   name: 'node_worker_threads_blocked',
   help: '1 if event loop lag p99 > 500 ms (proxy for blocked thread), 0 otherwise',
-  registers: [runtimeRegistry],
+  registers: [metricsRegistry],
 });
 
 // Baseline handle count recorded at startup; queue depth = current - baseline
 let baselineHandleCount = 0;
 
 // ─── Alert Rule State ───────────────────────────────────────────────────────
-// "If event_loop_lag_seconds > 0.5 (p99) for 5 consecutive scraping intervals,
-//  log a warning 'Event loop blocked for >500ms — check for synchronous I/O in hot path'."
 let consecutiveBlockedCount = 0;
 let collectIntervalId: ReturnType<typeof setInterval> | null = null;
 
 // ─── Metric Collection Logic ────────────────────────────────────────────────
 
-/**
- * Collect all runtime metrics and update the Prometheus gauges/histograms.
- * Called every `intervalMs` (default 15 s) and on-demand before each scrape.
- */
 /**
  * Safely read a nanosecond value from the perf_hooks histogram,
  * returning 0 when the histogram has no observations (NaN).
@@ -168,8 +163,6 @@ function collectRuntimeMetrics(): void {
   activeHandlesGauge.set(activeHandles);
 
   // Active Worker threads — requires manual tracking via Worker 'exit' event.
-  // In this codebase Worker instances are temporary test helpers, so the
-  // count is typically 0. We keep the gauge for observability completeness.
   workerThreadsActiveGauge.set(0);
 
   // Approximate queue depth = active handles - baseline (clamped at 0)
@@ -188,12 +181,17 @@ function collectRuntimeMetrics(): void {
       console.warn(
         'Event loop blocked for >500ms — check for synchronous I/O in hot path',
       );
-      consecutiveBlockedCount = 0; // reset after firing the warning
+      consecutiveBlockedCount = 0;
     }
   } else {
     consecutiveBlockedCount = 0;
     blockedWorkerGauge.set(0);
   }
+
+  // 5. Cross-cutting collectors
+  collectThreadStates();
+  collectPoolMetrics();
+  collectLedgerMetrics();
 }
 
 // ─── Lifecycle Helpers ──────────────────────────────────────────────────────
@@ -235,14 +233,23 @@ function stopCollecting(): void {
  */
 async function getRuntimeMetricsText(): Promise<string> {
   collectRuntimeMetrics();
-  return runtimeRegistry.metrics();
+  return metricsRegistry.metrics();
+}
+
+/**
+ * Return the latest runtime metrics as a Prometheus text-format string
+ * from the unified registry (includes ALL metric families).
+ */
+async function getAllMetricsText(): Promise<string> {
+  collectRuntimeMetrics();
+  return metricsRegistry.metrics();
 }
 
 /**
  * Reset the runtime metrics registry and state (for testing).
  */
 function resetMetrics(): void {
-  runtimeRegistry.resetMetrics();
+  metricsRegistry.resetMetrics();
   consecutiveBlockedCount = 0;
   baselineHandleCount = 0;
   eventLoopMonitor.reset();
@@ -252,7 +259,11 @@ function resetMetrics(): void {
 
 // ─── Exports ────────────────────────────────────────────────────────────────
 
+// Backward-compatible alias for tests that still import runtimeRegistry
+const runtimeRegistry = metricsRegistry;
+
 export {
+  metricsRegistry,
   runtimeRegistry,
   eventLoopLagHistogram,
   heapUsedGauge,
@@ -266,6 +277,7 @@ export {
   startCollecting,
   stopCollecting,
   getRuntimeMetricsText,
+  getAllMetricsText,
   resetMetrics,
   collectRuntimeMetrics,
 };
