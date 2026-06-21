@@ -1,0 +1,29 @@
+{
+  "target": {
+    "host": "localhost",
+    "port": 3000,
+    "endpoint": "/",
+    "protocol": "http"
+  },
+  "simulation": {
+    "sensorCount": 1000,
+    "ciSensorCount": 100,
+    "telemetryIntervalMs": {
+      "min": 5000,
+      "max": 30000
+    },
+    "jitterMs": {
+      "min": 10,
+      "max": 2000
+    },
+    "outOfOrderProbability": 0.05,
+    "dropoutProbability": 0.02,
+    "reconnectDelayMs": {
+      "min": 30000,
+      "max": 120000
+    },
+    "testDurationMs": 60000,
+    "ciTestDurationMs": 10000
+  },
+  "workers": 4
+}
