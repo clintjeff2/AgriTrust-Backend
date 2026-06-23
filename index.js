@@ -121,4 +121,28 @@ app.get('/debug/metrics/check', async (_req, res) => {
   await debugCheck.debugMetricsCheckHandler(_req, res);
 });
 
+// ─── Certificate Minting Service & Routes ───────────────────────────────────
+try {
+  const { Pool } = require('pg');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+  // Use compiled JS files from dist
+  const { MintService } = require('./dist/src/certificate/mintService');
+  const { BatchEventListener } = require('./dist/src/events/batchEventListener');
+  const { createBatchRouter } = require('./dist/src/api/routes/batchRoutes');
+
+  const mintService = new MintService(pool);
+
+  // Start Event Listener
+  const eventListener = new BatchEventListener(mintService);
+  if (process.env.NODE_ENV !== 'test') {
+    eventListener.start();
+  }
+
+  // Mount API Routes
+  app.use('/api/v1/batches', createBatchRouter(mintService));
+} catch (err) {
+  console.warn('Certificate minting modules not found or failed to load. Skipping init.');
+}
+
 app.listen(port, () => console.log('Grant API running'));
