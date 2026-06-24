@@ -147,6 +147,32 @@ try {
   console.warn('Certificate minting modules not found or failed to load. Skipping init.');
 }
 
+// ─── Saga Orchestration Coordinator (Escrow Settlement) ─────────────────────
+// Multi-step escrow settlement (hold → verify → release) with compensating
+// actions and a persistent execution log. See issue #43.
+try {
+  const { Pool } = require('pg');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+  const { SagaCoordinator } = require('./dist/src/settlement/saga-coordinator');
+  const { SagaLogStore } = require('./dist/src/database/saga_log');
+  const { EscrowEngine, buildSettlementSaga } = require('./dist/src/settlement/escrow-engine');
+  const { createSagaRouter } = require('./dist/src/api/routes/sagaRoutes');
+
+  const sagaLogStore = new SagaLogStore(pool);
+  const sagaCoordinator = new SagaCoordinator(sagaLogStore);
+
+  // Register the escrow settlement definition so failed sagas can be retried.
+  sagaCoordinator.registerDefinition(
+    buildSettlementSaga(new EscrowEngine(), { escrowId: '', amount: 0 }),
+  );
+
+  // Admin/debug endpoints: GET /admin/sagas/:id and POST /admin/sagas/:id/retry
+  app.use('/admin/sagas', createSagaRouter(sagaCoordinator, sagaLogStore));
+} catch (err) {
+  console.warn('Saga orchestration modules not found or failed to load. Skipping init.');
+}
+
 if (isMtlsEnabled) {
   (async () => {
     try {
