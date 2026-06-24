@@ -25,6 +25,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.3",
+    "@types/express-serve-static-core": "^4.17.27",
     "@types/pg": "^8.20.0",
     "@types/uuid": "^10.0.0",
     "pg-mem": "^3.0.14",

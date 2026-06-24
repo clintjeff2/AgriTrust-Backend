@@ -12,17 +12,17 @@ describe('AuditLogger Concurrency', () => {
 
     // Register gen_random_uuid
     db.public.registerFunction({
-        name: 'gen_random_uuid',
-        returns: db.getSchema().getType('uuid'),
-        implementation: () => uuidv4(),
-    });
+      name: 'gen_random_uuid',
+      returns: 'uuid' as any,
+      implementation: () => uuidv4(),
+    } as any);
 
     // Register hashtext for advisory lock
     db.public.registerFunction({
-        name: 'hashtext',
-        args: [db.getSchema().getType('text')],
-        returns: db.getSchema().getType('integer'),
-        implementation: (str: string) => {
+      name: 'hashtext',
+      args: ['text'] as any,
+      returns: 'integer' as any,
+      implementation: (str: string) => {
             let hash = 0;
             for (let i = 0; i < str.length; i++) {
                 hash = (hash << 5) - hash + str.charCodeAt(i);
@@ -34,12 +34,12 @@ describe('AuditLogger Concurrency', () => {
 
     // Mock pg_advisory_xact_lock
     db.public.registerFunction({
-        name: 'pg_advisory_xact_lock',
-        args: [db.getSchema().getType('integer')],
-        implementation: () => {
-            return null;
-        },
-    });
+      name: 'pg_advisory_xact_lock',
+      args: ['integer'] as any,
+      implementation: () => {
+        return null;
+      },
+    } as any);
 
     db.public.none(`
       CREATE TABLE batch_audit (

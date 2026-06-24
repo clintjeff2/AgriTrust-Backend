@@ -2,6 +2,8 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 3000;
 
+const isMtlsEnabled = process.env.MTLS_ENABLED === 'true';
+
 app.use(express.json());
 
 // ─── HTTP Metrics Middleware ─────────────────────────────────────────────────
@@ -145,4 +147,43 @@ try {
   console.warn('Certificate minting modules not found or failed to load. Skipping init.');
 }
 
-app.listen(port, () => console.log('Grant API running'));
+if (isMtlsEnabled) {
+  (async () => {
+    try {
+      let gatewayModule;
+      let registryModule;
+      let revocationServiceModule;
+      let revocationCronModule;
+      try {
+        gatewayModule = require('./dist/src/api/gateway/tls_config');
+        registryModule = require('./dist/src/devices/registry');
+        revocationServiceModule = require('./dist/src/devices/revocation_service');
+        revocationCronModule = require('./dist/src/devices/revocation_cron');
+      } catch {
+        gatewayModule = require('./src/api/gateway/tls_config');
+        registryModule = require('./src/devices/registry');
+        revocationServiceModule = require('./src/devices/revocation_service');
+        revocationCronModule = require('./src/devices/revocation_cron');
+      }
+      const { createMtlsServer, getMtlsServerConfigFromEnv } = gatewayModule;
+      const { DeviceRegistry } = registryModule;
+      const { CertificateRevocationService } = revocationServiceModule;
+      const { RevocationCron } = revocationCronModule;
+      const { Pool } = require('pg');
+
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const registry = new DeviceRegistry(pool);
+      await registry.refreshRevokedSerials();
+      const cron = new RevocationCron(new CertificateRevocationService(pool));
+      cron.start();
+
+      const server = createMtlsServer(app, registry, getMtlsServerConfigFromEnv());
+      server.listen(port, () => console.log(`Grant mTLS API running on port ${port}`));
+    } catch (err) {
+      console.error('Failed to start mTLS server:', err);
+      process.exit(1);
+    }
+  })();
+} else {
+  app.listen(port, () => console.log('Grant API running'));
+}
