@@ -6,6 +6,15 @@ const isMtlsEnabled = process.env.MTLS_ENABLED === 'true';
 
 app.use(express.json());
 
+// ─── OpenAPI request/response validation middleware ───────────────────────────
+let openApiMiddleware;
+try {
+  openApiMiddleware = require('./src/middleware/openapi-validator').openApiValidationMiddleware;
+} catch {
+  openApiMiddleware = require('./dist/src/middleware/openapi-validator').openApiValidationMiddleware;
+}
+app.use(openApiMiddleware);
+
 // ─── HTTP Metrics Middleware ─────────────────────────────────────────────────
 // Tracks request duration, response size, and status code per route.
 let metricsMiddleware;
@@ -103,6 +112,23 @@ app.get('/metrics/runtime', async (_req, res) => {
   } catch (err) {
     console.error('Failed to scrape runtime metrics:', err);
     res.status(500).send('# Error collecting runtime metrics\n');
+  }
+});
+
+app.get('/openapi.json', async (_req, res) => {
+  try {
+    let loader;
+    try {
+      loader = require('./src/openapi/spec-loader');
+    } catch {
+      loader = require('./dist/src/openapi/spec-loader');
+    }
+
+    const spec = await loader.getMergedOpenApiDocument();
+    res.status(200).json(spec);
+  } catch (err) {
+    console.error('Failed to serve OpenAPI spec:', err);
+    res.status(500).json({ error: 'OpenAPI spec unavailable' });
   }
 });
 

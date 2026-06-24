@@ -1,0 +1,7 @@
+openapi: 3.1.0
+info:
+  title: AgriTrust Backend API v2
+  version: 2.0.0
+servers:
+  - url: /
+paths: {}
