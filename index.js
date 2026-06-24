@@ -173,6 +173,83 @@ try {
   console.warn('Certificate minting modules not found or failed to load. Skipping init.');
 }
 
+// ─── Saga Orchestration Coordinator (Escrow Settlement) ─────────────────────
+// Multi-step escrow settlement (hold → verify → release) with compensating
+// actions and a persistent execution log. See issue #43.
+try {
+  const { Pool } = require('pg');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+  const { SagaCoordinator } = require('./dist/src/settlement/saga-coordinator');
+  const { SagaLogStore } = require('./dist/src/database/saga_log');
+  const { EscrowEngine, buildSettlementSaga } = require('./dist/src/settlement/escrow-engine');
+  const { createSagaRouter } = require('./dist/src/api/routes/sagaRoutes');
+
+  const sagaLogStore = new SagaLogStore(pool);
+  const sagaCoordinator = new SagaCoordinator(sagaLogStore);
+
+  // Register the escrow settlement definition so failed sagas can be retried.
+  sagaCoordinator.registerDefinition(
+    buildSettlementSaga(new EscrowEngine(), { escrowId: '', amount: 0 }),
+  );
+
+  // Admin/debug endpoints: GET /admin/sagas/:id and POST /admin/sagas/:id/retry
+  app.use('/admin/sagas', createSagaRouter(sagaCoordinator, sagaLogStore));
+} catch (err) {
+  console.warn('Saga orchestration modules not found or failed to load. Skipping init.');
+}
+
+// ─── Event Sourcing Event Store Metrics ─────────────────────────────────────
+// Registers the `event_store_read_duration_ms` summary against the unified
+// metrics registry at boot so it surfaces on GET /metrics. See issue #42.
+try {
+  require('./dist/src/api/metrics/event_store_metrics');
+} catch {
+  try {
+    require('./src/api/metrics/event_store_metrics');
+  } catch {
+    console.warn('Event store metrics module not found. Skipping registration.');
+  }
+}
+
+// ─── Job Queue — Weighted Fair Queue Scheduler (Issue #44) ──────────────────
+// Background job priority scheduler with deficit round-robin and per-type
+// concurrency budgets. Backed by Redis sorted sets. See issue #44.
+try {
+  const { JobRegistry } = require('./dist/src/job-queue/job-registry');
+  const { JobQueuePersistence } = require('./dist/src/job-queue/persistence');
+  const { WorkerPool } = require('./dist/src/job-queue/worker-pool');
+  const { Scheduler } = require('./dist/src/job-queue/scheduler');
+  const { createAdminJobsRouter } = require('./dist/src/api/routes/adminJobsRoutes');
+  const { DEFAULT_JOB_CONFIGS } = require('./dist/src/config/jobs');
+
+  const registry = new JobRegistry();
+  const persistence = new JobQueuePersistence(process.env.REDIS_URL || 'redis://localhost:6379');
+  const workerPool = new WorkerPool(20);
+  const scheduler = new Scheduler(registry, persistence, workerPool);
+
+  // Register job type handlers (dummy handlers — real ones wired by the service layer).
+  for (const type of Object.keys(DEFAULT_JOB_CONFIGS)) {
+    registry.register(type, async (payload) => {
+      console.log(`[JobQueue] Handling ${type}:`, JSON.stringify(payload).slice(0, 200));
+    });
+  }
+
+  // Mount admin API under /admin/jobs
+  app.use('/admin', createAdminJobsRouter(scheduler, persistence, workerPool));
+
+  // Start the scheduler tick loop in production.
+  if (process.env.NODE_ENV !== 'test') {
+    persistence.connect()
+      .then(() => { scheduler.start(); })
+      .catch((err) => console.warn('Redis unavailable — job queue disabled:', err.message));
+    console.log('Job queue scheduler started.');
+  }
+} catch (err) {
+  console.warn('Job queue modules not found or failed to load. Skipping init.');
+  console.warn(err instanceof Error ? err.message : String(err));
+}
+
 if (isMtlsEnabled) {
   (async () => {
     try {
