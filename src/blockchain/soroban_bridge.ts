@@ -161,6 +161,157 @@ export class SorobanRpcClient {
   }
 }
 
+export interface SorobanSubmitResult {
+  hash: string;
+  status: 'pending' | 'confirmed' | 'failed';
+  ledgerSequence?: number;
+  confirmedLedgerHash?: string;
+}
+
+export interface SorobanTxStatus {
+  status: 'NOT_FOUND' | 'PENDING' | 'SUCCESS' | 'FAILED';
+  ledger?: number;
+  ledgerHash?: string;
+}
+
+/**
+ * Extended Soroban RPC client that adds transaction submission and polling
+ * for the two-phase commit coordinator.
+ */
+export class SorobanSubmitter {
+  private config: SorobanRpcConfig;
+
+  constructor(config: SorobanRpcConfig) {
+    this.config = config;
+  }
+
+  /** Submits a signed transaction envelope XDR to the Soroban RPC. */
+  async submitTransaction(signedXdr: string): Promise<SorobanSubmitResult> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+
+    try {
+      const response = await fetch(this.config.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sendTransaction',
+          params: { transaction: signedXdr },
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`RPC returned ${response.status}`);
+      }
+
+      const json = (await response.json()) as {
+        error?: { message: string };
+        result?: { hash: string; status: string; latestLedger?: number };
+      };
+      if (json.error) {
+        throw new Error(`RPC error: ${json.error.message}`);
+      }
+
+      const result = json.result!;
+      return {
+        hash: result.hash,
+        status: result.status === 'PENDING' ? 'pending' : 'failed',
+        ledgerSequence: result.latestLedger,
+      };
+    } catch (err) {
+      clearTimeout(timeout);
+      throw err;
+    }
+  }
+
+  /** Polls the Soroban RPC for a transaction's status by hash. */
+  async getTransactionStatus(txHash: string): Promise<SorobanTxStatus> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+
+    try {
+      const response = await fetch(this.config.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getTransaction',
+          params: { hash: txHash },
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        return { status: 'NOT_FOUND' };
+      }
+
+      const json = (await response.json()) as {
+        error?: { message: string };
+        result?: { status: string; ledger?: number; ledgerHash?: string };
+      };
+
+      if (json.error || !json.result) {
+        return { status: 'NOT_FOUND' };
+      }
+
+      const s = json.result.status;
+      const status: SorobanTxStatus['status'] =
+        s === 'SUCCESS' ? 'SUCCESS' :
+        s === 'FAILED' ? 'FAILED' :
+        s === 'NOT_FOUND' ? 'NOT_FOUND' : 'PENDING';
+
+      return {
+        status,
+        ledger: json.result.ledger,
+        ledgerHash: json.result.ledgerHash,
+      };
+    } catch {
+      return { status: 'NOT_FOUND' };
+    }
+  }
+
+  /**
+   * Submits a transaction and polls until it reaches a terminal state or
+   * the deadline elapses.  Returns the final status.
+   */
+  async submitAndConfirm(
+    signedXdr: string,
+    timeoutMs: number = 30_000,
+    pollIntervalMs: number = 2_000,
+  ): Promise<SorobanSubmitResult> {
+    const submission = await this.submitTransaction(signedXdr);
+    if (submission.status === 'failed') {
+      return submission;
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      const status = await this.getTransactionStatus(submission.hash);
+
+      if (status.status === 'SUCCESS') {
+        return {
+          hash: submission.hash,
+          status: 'confirmed',
+          ledgerSequence: status.ledger,
+          confirmedLedgerHash: status.ledgerHash,
+        };
+      }
+      if (status.status === 'FAILED') {
+        return { hash: submission.hash, status: 'failed' };
+      }
+    }
+
+    return { hash: submission.hash, status: 'pending' };
+  }
+}
+
 function decodeSorobanTransactionData(transactionDataXdr: string): {
   instructions: number;
   readBytes: number;
