@@ -71,3 +71,11 @@ class MonitoredPool {
 }
 
 export { MonitoredPool };
+
+export function createMonitoredPool(opts: { max?: number } & Partial<PoolConfig> = {}): MonitoredPool {
+  const cfg: PoolConfig & { max?: number } = {
+    connectionString: process.env.DATABASE_URL,
+    ...opts,
+  } as any;
+  return new MonitoredPool(cfg);
+}
