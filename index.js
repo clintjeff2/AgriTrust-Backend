@@ -173,6 +173,19 @@ try {
   console.warn('Saga orchestration modules not found or failed to load. Skipping init.');
 }
 
+// ─── Event Sourcing Event Store Metrics ─────────────────────────────────────
+// Registers the `event_store_read_duration_ms` summary against the unified
+// metrics registry at boot so it surfaces on GET /metrics. See issue #42.
+try {
+  require('./dist/src/api/metrics/event_store_metrics');
+} catch {
+  try {
+    require('./src/api/metrics/event_store_metrics');
+  } catch {
+    console.warn('Event store metrics module not found. Skipping registration.');
+  }
+}
+
 if (isMtlsEnabled) {
   (async () => {
     try {
