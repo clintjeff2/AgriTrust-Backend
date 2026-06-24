@@ -17,7 +17,6 @@ export interface OperationValidators {
 const ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true, verbose: false });
 addFormats(ajv);
 const schemaCache = new LRUCache<string, ValidateFunction>(10000);
-const operationValidators = new Map<string, OperationValidators>();
 let mergedOpenApiDocument: OpenAPIV3.Document | null = null;
 let initialized = false;
 
@@ -64,6 +63,11 @@ function compileSchema(schema: object): ValidateFunction {
 
 function normalizeRouterPath(openApiPath: string): string {
   return openApiPath.replace(/\{([^}]+)\}/g, ':$1');
+}
+
+function routePatternToRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/:[^/]+/g, '[^/]+');
+  return new RegExp(`^${escaped}$`);
 }
 
 function buildParametersSchema(parameters: OpenAPIV3.ParameterObject[] = []): OpenAPIV3.SchemaObject | undefined {
@@ -147,7 +151,7 @@ function buildRequestValidator(operation: OpenAPIV3.OperationObject, pathParamet
   const schema: any = {
     type: 'object',
     properties: {},
-    additionalProperties: false,
+    additionalProperties: true,
   };
 
   if (parameterSchema) {
@@ -192,14 +196,28 @@ function buildResponseValidators(operation: OpenAPIV3.OperationObject): Map<stri
   return validators;
 }
 
-function buildRouteKey(method: string, routerPath: string): string {
-  return `${method.toUpperCase()} ${routerPath}`;
+interface RouteEntry {
+  method: string;
+  pattern: string;
+  regex: RegExp;
+  validators: OperationValidators;
 }
 
-function getRouteKey(req: Request): string {
-  const routePath = req.route?.path ?? req.path;
-  const prefix = req.baseUrl ?? '';
-  return buildRouteKey(req.method, `${prefix}${routePath}`);
+const routeEntries: RouteEntry[] = [];
+
+export interface MatchedValidators extends OperationValidators {
+  routePattern: string;
+}
+
+function findValidatorsForRequest(req: Request): MatchedValidators | undefined {
+  const method = req.method.toUpperCase();
+  const fullPath = (req.baseUrl ?? '') + req.path;
+  for (const entry of routeEntries) {
+    if (entry.method === method && entry.regex.test(fullPath)) {
+      return { ...entry.validators, routePattern: entry.pattern };
+    }
+  }
+  return undefined;
 }
 
 async function initializeOpenApi(): Promise<void> {
@@ -230,13 +248,14 @@ async function initializeOpenApi(): Promise<void> {
 
       const customRouterPath = (operation as any)['x-router-path'] ?? (pathItem as any)['x-router-path'];
       const routerPath = typeof customRouterPath === 'string' ? customRouterPath : normalizedPath;
-      const key = buildRouteKey(method, routerPath);
       const requestValidator = buildRequestValidator(operation, pathParameters);
       const responseValidators = buildResponseValidators(operation);
 
-      operationValidators.set(key, {
-        requestValidator,
-        responseValidators,
+      routeEntries.push({
+        method: method.toUpperCase(),
+        pattern: routerPath,
+        regex: routePatternToRegex(routerPath),
+        validators: { requestValidator, responseValidators },
       });
     }
   }
@@ -252,10 +271,10 @@ export async function getMergedOpenApiDocument(): Promise<OpenAPIV3.Document> {
   return mergedOpenApiDocument as OpenAPIV3.Document;
 }
 
-export async function getOperationValidators(req: Request): Promise<OperationValidators | undefined> {
+export async function getOperationValidators(req: Request): Promise<MatchedValidators | undefined> {
   if (!initialized) {
     await initializeOpenApi();
   }
 
-  return operationValidators.get(getRouteKey(req));
+  return findValidatorsForRequest(req);
 }

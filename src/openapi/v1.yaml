@@ -30,7 +30,6 @@ paths:
                       type: string
                       pattern: '^[a-z_]+$'
                   additionalProperties: false
-              additionalProperties: false
       responses:
         '200':
           description: Certificate minted successfully

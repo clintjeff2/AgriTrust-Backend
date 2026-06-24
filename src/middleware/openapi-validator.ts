@@ -11,9 +11,23 @@ function normalizeRequestHeaders(headers: Record<string, unknown>): Record<strin
   }, {} as Record<string, unknown>);
 }
 
-function buildRequestPayload(req: any): Record<string, unknown> {
+function extractPathParams(urlPath: string, pattern: string): Record<string, string> {
+  const patternParts = pattern.split('/');
+  const urlParts = urlPath.split('/');
+  const params: Record<string, string> = {};
+  for (let i = 0; i < patternParts.length; i++) {
+    if (patternParts[i].startsWith(':')) {
+      params[patternParts[i].slice(1)] = urlParts[i] ?? '';
+    }
+  }
+  return params;
+}
+
+function buildRequestPayload(req: any, routePattern: string): Record<string, unknown> {
+  const fullPath = (req.baseUrl ?? '') + req.path;
+  const pathParams = Object.keys(req.params ?? {}).length > 0 ? req.params : extractPathParams(fullPath, routePattern);
   return {
-    path: req.params ?? {},
+    path: pathParams,
     query: req.query ?? {},
     header: normalizeRequestHeaders(req.headers ?? {}),
     body: req.body,
@@ -38,7 +52,7 @@ export const openApiValidationMiddleware: RequestHandler = async (req, res, next
   }
 
   if (validators.requestValidator) {
-    const payload = buildRequestPayload(req);
+    const payload = buildRequestPayload(req, validators.routePattern);
     const valid = validators.requestValidator(payload);
 
     if (!valid) {
