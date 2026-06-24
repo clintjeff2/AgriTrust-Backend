@@ -20,8 +20,10 @@ export class LRUCache<K, V> {
     this.cache.set(key, value);
 
     if (this.cache.size > this.maxEntries) {
-      const oldestKey = this.cache.keys().next().value;
-      this.cache.delete(oldestKey);
+      const oldestKey = this.cache.keys().next().value as K | undefined;
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
     }
   }
 

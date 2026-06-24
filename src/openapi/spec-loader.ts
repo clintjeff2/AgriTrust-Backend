@@ -1,6 +1,4 @@
-import fs from 'fs/promises';
 import path from 'path';
-import { parse } from 'yaml';
 import RefParser from '@apidevtools/json-schema-ref-parser';
 import Ajv, { ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
@@ -22,9 +20,7 @@ let initialized = false;
 
 async function loadOpenApiDocument(specPath: string): Promise<OpenAPIV3.Document> {
   const absolutePath = path.resolve(process.cwd(), specPath);
-  const source = await fs.readFile(absolutePath, 'utf8');
-  const parsed = parse(source) as OpenAPIV3.Document;
-  const dereferenced = (await RefParser.dereference(absolutePath, parsed)) as OpenAPIV3.Document;
+  const dereferenced = (await RefParser.dereference(absolutePath)) as unknown as OpenAPIV3.Document;
 
   if (!dereferenced.openapi) {
     throw new Error(`OpenAPI specification at ${specPath} is invalid or missing openapi version.`);
@@ -156,7 +152,8 @@ function buildRequestValidator(operation: OpenAPIV3.OperationObject, pathParamet
 
   if (parameterSchema) {
     schema.properties = { ...schema.properties, ...parameterSchema.properties };
-    if (parameterSchema.properties.path && parameterSchema.properties.path.required) {
+    const pathProp = (parameterSchema.properties as Record<string, any> | undefined)?.path;
+    if (pathProp && Array.isArray(pathProp.required) && pathProp.required.length > 0) {
       schema.required = schema.required ?? [];
       schema.required.push('path');
     }
