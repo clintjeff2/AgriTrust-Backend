@@ -1,0 +1,32 @@
+--- package.json
++++ package.json
+@@
+   "scripts": {
+     "build": "tsc",
+     "start": "node dist/index.js",
+     "preflight": "npx ts-node src/cli/preflight_command.ts",
+     "test": "npx vitest run",
++    "test:contract": "npx ts-node scripts/run-openapi-contract-tests.ts",
+     "test:lock": "npx ts-node tests/integration/silo_lock_test.ts",
+     "test:unit": "npx ts-node tests/unit/sensors.test.ts",
+     "migrate": "node -e \"require('./src/database/migrate')\""
+   },
+@@
+     "express": "^5.2.1",
+     "pg": "^8.13.0",
+     "prom-client": "^15.1.3"
++    ,"yaml": "^2.3.1"
+   },
+@@
+     "@types/express": "^5.0.6",
+     "@types/node": "^25.9.3",
+     "@types/express-serve-static-core": "^4.17.27",
+     "@types/pg": "^8.20.0",
+     "@types/uuid": "^10.0.0",
++    "dredd": "^16.0.0",
+     "pg-mem": "^3.0.14",
+     "ts-node": "^10.9.2",
+     "typescript": "^6.0.3",
+     "uuid": "^14.0.1",
+     "vitest": "^4.1.9"
+   }
