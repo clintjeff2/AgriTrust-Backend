@@ -8,6 +8,7 @@
     "start": "node dist/index.js",
     "preflight": "npx ts-node src/cli/preflight_command.ts",
     "test": "npx vitest run",
+    "test:contract": "npx ts-node scripts/run-openapi-contract-tests.ts",
     "test:lock": "npx ts-node tests/integration/silo_lock_test.ts",
     "test:unit": "npx ts-node tests/unit/sensors.test.ts",
     "migrate": "node -e \"require('./src/database/migrate')\""
