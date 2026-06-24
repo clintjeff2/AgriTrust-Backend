@@ -123,10 +123,60 @@ export class HealthAggregator {
   }
 
   async evaluateAll(): Promise<Record<ServiceName, ServiceHealthSnapshot>> {
-    const statuses: Record<ServiceName, ServiceHealthSnapshot> = {};
-    for (const service of this.getServicesToMonitor()) {
-      statuses[service] = await this.evaluateService(service);
+    const services = Array.from(this.getServicesToMonitor());
+    const checkResults = await Promise.all(
+      services.map(async service => [service, await this.checker.checkAll(service)] as const),
+    );
+
+    for (const [service, results] of checkResults) {
+      this.storeCheckResults(service, results);
+      this.cleanupOldResults(service);
     }
+
+    const states = new Map<ServiceName, HealthState>();
+    for (const service of services) {
+      const aggregatedScore = this.calculateAggregatedScore(service);
+      states.set(service, this.determineOverallState(aggregatedScore));
+    }
+
+    for (const [service, state] of states.entries()) {
+      this.cascadingModel.setServiceState(service, state);
+    }
+
+    const statuses: Record<ServiceName, ServiceHealthSnapshot> = {};
+    for (const service of services) {
+      const aggregatedScore = this.calculateAggregatedScore(service);
+      const status = states.get(service) ?? this.determineOverallState(aggregatedScore);
+      const riskyPaths = this.cascadingModel.findRiskyPaths(
+        service,
+        status,
+        this.options.cascadingFailureThreshold,
+      );
+      const checks = this.getLatestCheckResults(service);
+      const alerts = this.createAlerts(service, status, checks, riskyPaths);
+
+      this.updateMetrics(
+        service,
+        checks,
+        aggregatedScore,
+        this.cascadingModel.calculateUnhealthyProbability(service, status),
+        riskyPaths,
+      );
+
+      statuses[service] = {
+        status,
+        aggregatedScore: round(aggregatedScore),
+        cascadingFailureProbability: round(this.cascadingModel.calculateUnhealthyProbability(service, status)),
+        cascadingPaths: riskyPaths.map(path => ({
+          path: path.path,
+          trace: path.path.join(' -> '),
+          probability: round(path.probability),
+        })),
+        checks,
+        alerts,
+      };
+    }
+
     return statuses;
   }
 

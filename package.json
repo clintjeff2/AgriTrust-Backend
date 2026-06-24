@@ -2,10 +2,10 @@
   "name": "agritrust-backend",
   "version": "1.0.0",
   "description": "API for AgriTrust Protocol",
-  "main": "dist/index.js",
+  "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node index.js",
     "preflight": "npx ts-node src/cli/preflight_command.ts",
     "test": "npx vitest run",
     "test:contract": "npx ts-node scripts/run-openapi-contract-tests.ts",

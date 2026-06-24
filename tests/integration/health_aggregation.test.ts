@@ -74,6 +74,30 @@ database:
     expect(snapshot.alerts[0].details.probability).toBeGreaterThan(0.15);
   });
 
+  it('evaluates all services before cascading analysis so dependency order does not suppress alerts', async () => {
+    const graph = new InMemoryDependencyGraph({
+      'api-gateway': ['inventory-service'],
+      'inventory-service': [],
+    });
+    const probe: HealthCheckProbe = async (service) => {
+      if (service === 'inventory-service') {
+        return { status: 'unhealthy', error: 'dependency outage' };
+      }
+      return { status: 'healthy' };
+    };
+    const aggregator = new HealthAggregator(
+      graph,
+      new HealthChecker(probe, { liveness: 50, readiness: 50, depth: 50 }),
+      undefined,
+      { cascadingFailureThreshold: 0.15 },
+    );
+
+    const snapshots = await aggregator.evaluateAll();
+
+    expect(snapshots['api-gateway'].alerts.length).toBeGreaterThan(0);
+    expect(snapshots['api-gateway'].alerts[0].message).toContain('api-gateway -> inventory-service');
+  });
+
   it('exports health check, aggregate score, and cascading probability metrics', async () => {
     const graph = new InMemoryDependencyGraph({ 'api-gateway': ['database'], database: [] });
     const aggregator = new HealthAggregator(
