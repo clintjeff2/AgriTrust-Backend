@@ -1,8 +1,39 @@
 {
   "name": "agritrust-backend",
   "version": "1.0.0",
-  "description": "API for AgriTrust Protocol",
+  "description": "Node.js Express API server for the AgriTrust Protocol.",
+  "keywords": [
+    "agritrust",
+    "agriculture",
+    "trust-funds",
+    "express",
+    "stellar",
+    "api"
+  ],
+  "homepage": "https://github.com/AgriTrust-Protocol/AgriTrust-Backend#readme",
+  "bugs": {
+    "url": "https://github.com/AgriTrust-Protocol/AgriTrust-Backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgriTrust-Protocol/AgriTrust-Backend.git"
+  },
+  "license": "Apache-2.0",
+  "author": "AgriTrust Protocol",
   "main": "index.js",
+  "types": "dist/src/types/express.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/types/express.d.ts",
+      "require": "./index.js",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node index.js",
